@@ -8,34 +8,51 @@
 |----------|-------|
 | *Contributors* | The [VS Code Python extension](https://marketplace.visualstudio.com/itemdetails?itemName=ms-python.python) team |
 | *Definition type* | Docker Compose |
-| *Published image* | mcr.microsoft.com/vscode/devcontainers/python:3 |
-| *Available image variants* |  mcr.microsoft.com/vscode/devcontainers/python:3.8 <br />  mcr.microsoft.com/vscode/devcontainers/python:3.7<br /> mcr.microsoft.com/vscode/devcontainers/python:3.6 |
-| *Published image architecture(s)* | x86-64 |
 | *Works in Codespaces* | Yes |
 | *Container host OS support* | Linux, macOS, Windows |
 | *Languages, platforms* | Python |
 
 ## Using this definition with an existing folder
 
-### Configuration
+This definition creates two containers, one for Python and one for PostgreSQL. VS Code will attach to the Python container, and from within that container the PostgreSQL container will be available on **`localhost`** port 5432. The default database is named `postgres` with a user of `postgres` whose password is `postgres`, and if desired this may be changed in `docker-compose.yml`. Data is stored in a volume named `postgres-data`.
 
-While the definition itself works unmodified, you can select the version of Python the container uses by updating the `VARIANT` arg in the included `.devcontainer/docker-compose.yml` (and rebuilding if you've already created the container).
+While the definition itself works unmodified, it uses the `mcr.microsoft.com/vscode/devcontainers/python` image which includes `git`, `eslint`, `zsh`, [Oh My Zsh!](https://ohmyz.sh/), a non-root `vscode` user with `sudo` access, and a set of common dependencies and Python tools for development. You can pick a different version of this image by updating the `VARIANT` arg in `.devcontainer/docker-compose.yml` to pick either Python version 3, 3.8, 3.7, or 3.6.
 
 ```yaml
-args:
-  VARIANT": 3.7
+build:
+  context: ..
+  dockerfile: .devcontainer/Dockerfile
+  args:
+    VARIANT: 3.7
 ```
 
-This allows you to pick from one of the following pre-built images:
+You also can connect to PostgreSQL from an external tool when using VS Code by updating `.devcontainer/devcontainer.json` as follows:
 
-- `mcr.microsoft.com/vscode/devcontainers/python:3` (latest)
-- `mcr.microsoft.com/vscode/devcontainers/python:3.6`
-- `mcr.microsoft.com/vscode/devcontainers/python:3.7`
-- `mcr.microsoft.com/vscode/devcontainers/python:3.8`
+```json
+"forwardPorts": [ "5432" ]
+```
 
-Alternatively, you can replace `.devcontainer/Dockerfile` in this definition with [`base.Dockerfile` from the Python 3 definition](../python-3/.devcontainer/base.Dockerfile) to fully customize your environment.
+### Adding another service
 
-#### Installing or updating Python utilities
+You can add other services to your `docker-compose.yml` file [as described in Docker's documentaiton](https://docs.docker.com/compose/compose-file/#service-configuration-reference). However, if you want anything running in this service to be available in the container on localhost, or want to forward the service locally, be sure to add this line to the service config:
+
+```yaml
+# Runs the service on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+network_mode: service:db
+```
+
+### Installing Node.js
+
+Given how frequently Python-based web applications use Node.js for front end code, this container also includes Node.js. You can change the version of Node.js installed or disable its installation by updating the `args` property in `.devcontainer/docker-compose.yml`.
+
+```json
+args:
+  VARIANT: 3.7
+  INSTALL_NODE: "true",
+  NODE_VERSION: "10"
+```
+
+### Installing or updating Python utilities
 
 This container installs all Python development utilities using [pipx](https://pipxproject.github.io/pipx/) to avoid impacting the global Python environment. You can use this same utility add additional utilities in an isolated environment. For example:
 
@@ -45,7 +62,7 @@ pipx install prospector
 
 See the [pipx documentation](https://pipxproject.github.io/pipx/docs/) for additional information.
 
-#### Debug Configuration
+### Debug Configuration
 
 Note that only the integrated terminal is supported by the Remote - Containers extension. You may need to modify `launch.json` configurations to include the following value if an external console is used.
 
@@ -53,7 +70,7 @@ Note that only the integrated terminal is supported by the Remote - Containers e
 "console": "integratedTerminal"
 ```
 
-#### Using the forwardPorts property
+### Using the forwardPorts property
 
 By default, frameworks like Flask only listens to localhost inside the container. As a result, we recommend using the `forwardPorts` property (available in v0.98.0+) to make these ports available locally.
 
@@ -61,11 +78,11 @@ By default, frameworks like Flask only listens to localhost inside the container
 "forwardPorts": [5000]
 ```
 
-The `ports` property in `docker-compose.yml` [publishes](https://docs.docker.com/config/containers/container-networking/#published-ports) rather than forwards the port, so applications need to listen to `*` or `0.0.0.0` for the application to be accessible externally. This conflicts with the defaults of some Python frameworks, but fortunately the `forwardPorts` property does not have this limitation.
+The `ports` property in `docker-compose.yml` [publishes](https://docs.docker.com/config/containers/container-networking/#published-ports) rather than forwards the port, this will not work in a Codespace and applications need to listen to `*` or `0.0.0.0` for the application to be accessible externally. This conflicts with the defaults of some Python frameworks, but fortunately the `forwardPorts` property does not have this limitation.
 
 If you've already opened your folder in a container, rebuild the container using the **Remote-Containers: Rebuild Container** command from the Command Palette (<kbd>F1</kbd>) so the settings take effect.
 
-#### [Optional] Building your requirements into the container image
+### [Optional] Building your requirements into the container image
 
 If your requirements rarely change, you can include the contents of `requirements.txt` in the container by adding the following to your `Dockerfile`:
 
@@ -77,7 +94,7 @@ RUN pip3 --disable-pip-version-check --no-cache-dir install -r /tmp/pip-tmp/requ
 
 Since `requirements.txt` is likely in the folder you opened rather than the `.devcontainer` folder, be sure to include `context: ..` under `build` in `docker-compose.yml`. This allows the Dockerfile to access everything in the opened folder instead of just the contents of the `.devcontainer` folder.
 
-#### [Optional] Allowing the non-root vscode user to pip install globally without sudo
+### [Optional] Allowing the non-root vscode user to pip install globally without sudo
 
 You can opt into using the `vscode` non-root user in the container by adding `"remoteUser": "vscode"` to `devcontainer.json`. However, by default, this you will need to use `sudo` to perform global pip installs.
 
@@ -95,13 +112,11 @@ If you prefer, you can add the following to your `Dockerfile` to cause global in
 
 ```Dockerfile
 ENV PIP_TARGET=/usr/local/pip-global
-ENV PYTHONPATH=${PIP_TARGET}:${PYTHONPATH}
-ENV PATH=${PIP_TARGET}/bin:${PATH}
+ENV PYTHONPATH=${PIP_TARGET}:${PYTHONPATH} \
+    PATH=${PIP_TARGET}/bin:${PATH}
 RUN mkdir -p ${PIP_TARGET} \
     && chown vscode:root ${PIP_TARGET} \
-    && export SNIPPET="if [ \"\$(stat -c '%U' ${PIP_TARGET})\" != \"vscode\" ]; then chown -R vscode:root ${PIP_TARGET}; fi" \
-    && echo "$SNIPPET" | tee -a /root/.bashrc >> /home/vscode/.bashrc \
-    && echo "$SNIPPET" | tee -a /root/.zshrc >> /home/vscode/.zshrc
+    && echo "if [ \"\$(stat -c '%U' ${PIP_TARGET})\" != \"vscode\" ]; then sudo chown -R vscode:root ${PIP_TARGET}; fi" | tee -a /etc/bash.bashrc >> /etc/zsh/zshrc
 ```
 
 ### Adding the definition to your folder

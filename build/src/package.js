@@ -10,8 +10,8 @@ const asyncUtils = require('./utils/async');
 const configUtils = require('./utils/config');
 const packageJson = require('../../package.json');
 
-async function package(repo, release, updateLatest, registry, registryPath, 
-    stubRegistry, stubRegistryPath, prepAndPackageOnly, packageOnly, cleanWhenDone) {
+async function package(repo, release, updateLatest, registry, registryPath, stubRegistry,
+    stubRegistryPath, prepAndPackageOnly, packageOnly, cleanWhenDone, definitionsToSkipPush) {
 
     // Optional argument defaults
     packageOnly = typeof packageOnly === 'undefined' ? false : packageOnly;
@@ -29,7 +29,7 @@ async function package(repo, release, updateLatest, registry, registryPath,
 
     if (!packageOnly) {
         // First, push images, update content
-        await push(repo, release, updateLatest, registry, registryPath, stubRegistry, stubRegistryPath, true, prepAndPackageOnly);
+        await push(repo, release, updateLatest, registry, registryPath, stubRegistry, stubRegistryPath, true, prepAndPackageOnly, definitionsToSkipPush);
     }
 
     // Then package
@@ -43,7 +43,7 @@ async function package(repo, release, updateLatest, registry, registryPath,
     const packageJsonModified = packageJsonRaw.replace(/"version".?:.?".+"/, `"version": "${packageJsonVersion}"`);
     await asyncUtils.writeFile(packageJsonPath, packageJsonModified);
 
-    // Update all definition config files for release (devcontainer.json, Dockerfile)
+    // Update all definition config files for release (devcontainer.json, Dockerfile, library-scripts)
     const allDefinitions = await asyncUtils.readdir(definitionStagingFolder);
     await asyncUtils.forEach(allDefinitions, async (currentDefinitionId) => {
         await prep.updateConfigForRelease(

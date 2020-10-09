@@ -8,8 +8,8 @@
 |----------|-------|
 | *Contributors* | The [VS Code Python extension](https://marketplace.visualstudio.com/itemdetails?itemName=ms-python.python) team |
 | *Definition type* | Dockerfile |
-| *Published image* | mcr.microsoft.com/vscode/devcontainers/python:3 |
-| *Available image variants* |  mcr.microsoft.com/vscode/devcontainers/python:3.8 <br />  mcr.microsoft.com/vscode/devcontainers/python:3.7<br /> mcr.microsoft.com/vscode/devcontainers/python:3.6 |
+| *Published image* | mcr.microsoft.com/vscode/devcontainers/python |
+| *Available image variants* | 3, 3.6, 3.7, 3.8 |
 | *Published image architecture(s)* | x86-64 |
 | *Works in Codespaces* | Yes |
 | *Container Host OS Support* | Linux, macOS, Windows |
@@ -41,6 +41,18 @@ Version specific tags tied to [releases in this repository](https://github.com/m
 Alternatively, you can use the contents of `base.Dockerfile` to fully customize the your container's contents or build for a container architecture the image does not support.
 
 Beyond Python and `git`, this image / `Dockerfile` includes a number of Python tools, `zsh`, [Oh My Zsh!](https://ohmyz.sh/), a non-root `vscode` user with `sudo` access, and a set of common dependencies for development.
+
+### Installing Node.js
+
+Given how frequently Node.js is used for CLIs and front-end code, this container also includes the option to install Node.js. You can change the version of Node.js installed or disable its installation by updating the `args` property in `.devcontainer/devcontainer.json`.
+
+```json
+"args": {
+    "VARIANT": "3",
+    "INSTALL_NODE": "true",
+    "NODE_VERSION": "10"
+}
+```
 
 #### Installing or updating Python utilities
 
@@ -102,12 +114,24 @@ If you prefer, you can add the following to your `Dockerfile` to cause global in
 
 ```Dockerfile
 ENV PIP_TARGET=/usr/local/pip-global
-ENV PYTHONPATH=${PIP_TARGET}:${PYTHONPATH}
-ENV PATH=${PIP_TARGET}/bin:${PATH}
+ENV PYTHONPATH=${PIP_TARGET}:${PYTHONPATH} \
+    PATH=${PIP_TARGET}/bin:${PATH}
 RUN mkdir -p ${PIP_TARGET} \
     && chown vscode:root ${PIP_TARGET} \
-    && echo "if [ \"\$(stat -c '%U' ${PIP_TARGET})\" != \"vscode\" ]; then sudo chown -R vscode:root ${PIP_TARGET}; fi" \
-    | tee -a /root/.bashrc /root/.zshrc /home/vscode/.bashrc >> /home/vscode/.zshrc \
+    && echo "if [ \"\$(stat -c '%U' ${PIP_TARGET})\" != \"vscode\" ]; then sudo chown -R vscode:root ${PIP_TARGET}; fi" | tee -a /etc/bash.bashrc >> /etc/zsh/zshrc
+```
+
+#### [Optional] Installing multiple versions of Python in the same image
+
+If you would prefer to have multiple Python versions in your container, use `base.Dockerfile` and update `FROM` statement:
+
+```Dockerfile
+FROM ubuntu:bionic
+ARG PYTHON_PACKAGES="python3.5 python3.6 python3.7 python3.8 python3 python3-pip python3-venv"
+RUN apt-get update && apt-get install --no-install-recommends -yq software-properties-common \
+     && add-apt-repository ppa:deadsnakes/ppa && apt-get update \
+     && apt-get install -yq --no-install-recommends ${PYTHON_PACKAGES} \
+     && pip3 install --no-cache-dir --upgrade pip setuptools wheel
 ```
 
 ### Adding the definition to your project
@@ -147,3 +171,4 @@ This definition includes some test code that will help you verify it is working 
 Copyright (c) Microsoft Corporation. All rights reserved.
 
 Licensed under the MIT License. See [LICENSE](https://github.com/Microsoft/vscode-dev-containers/blob/master/LICENSE)
+

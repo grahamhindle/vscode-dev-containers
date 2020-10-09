@@ -27,8 +27,87 @@ This CLI is used in the GitHub Actions workflows in this repository.
 
 Image build/push to MCR is managed using config in `definition-manifest.json` files that are located in the container definition folder. The config lets you set dependencies between definitions and map actual image tags to multiple definitions. So, the steps to onboard an image are:
 
-1. Create a `definition-manifest.json` file
-2. Update the `vscode` config files for MCR as appropriate (MS internal only).
+1. **Important:** Update any `ARG` values in your `Dockerfile` to reflect what you want in the image. Use boolean `ARGS` with `if` statements to skip installing certain things in the image.
+
+    > **Note:** The `build.args` and `build.dockerfile` properties are **intentionally ignored** during image build so that you can vary image defaults and devcontainer.json defaults as appropriate. The only property considered is `build.context` since this may be required for the build to succeed.
+
+2. Create [a `definition-manifest.json` file](#definition-manifestjson)
+
+3. [Optional] Create a [stub Dockerfile](#creating-an-alternate-stub-dockerfile)
+
+4. Update the `vscode` [config files for MCR](https://github.com/microsoft/vscode-internalbacklog/wiki/Remote-Container-Images-MCR-Setup) as appropriate (MS internal only).
+
+## Testing the build
+
+Once you have your build configuration setup, you can use the `vscdc` CLI to test that everything is configured as you would expect.
+
+1. First, build the image(s) using the CLI as follows:
+
+   ```bash
+   build/vscdc push --no-push --registry mcr.microsoft.com --registry-path vscode/devcontainers --release master <you-definition-id-here>
+   ```
+
+2. Use the Docker CLI to verify all of the expected images and tags and have the right contents:
+
+    ```bash
+    docker run -it --rm mcr.microsoft.com/vscode/devcontainers/<expected-repository>:dev-<expected tag> bash
+    ```
+
+3. Finally, test cgmanifest generation by running:
+
+   ```bash
+   build/vscdc cg --registry mcr.microsoft.com --registry-path vscode/devcontainers --release master <you-definition-id-here>
+   ```
+
+Once you're happy with the result, you can also verify that the `devcontainer.json` and the associated concent that will be generated for your definition is correct.
+
+1. Generate a `.tgz` with all of the definitions zipped inside of it.
+
+    ```bash
+    build/vscdc pack --prep-and-package-only --release master
+    ```
+
+    A new file called `vscode-dev-containers-<version>-dev.tgz` should be in the root of the repository once this is done.
+
+2. Unzip generated the `tgz` somewhere in your filesystem.
+
+3. Start VS Code and use  **Remote-Containers: Open Folder in Container...**  on the unzipped definition in the `package/containers` folder and verify everything starts correctly.
+
+That's it!
+
+## Creating an alternate "stub" Dockerfile
+
+By default, the **Remote-Containers: Add Development Container Configuration File...** and related properties will use a basic getting started stub / sample Dockerfile [from here](./assets) and with a reference to the appropriate image. This provides some basic getting started information for developers.
+
+However, in some cases you may want to include some special instructions for developers. In this case, you can add a custom stub Dockerfile by creating the following files:
+
+- `base.Dockerfile`: Dockerfile used to generate the image itself
+- `Dockerfile`: A stub Dockerfile
+
+You can then reference `base.Dockerfile` in `devcontainer.json` to make editing the file that is used to create the image easy.
+
+When the definitions are packaged up for use, `base.Dockerfile` is excluded and the `devcontainer.json` file is automatically updated to `Dockerfile`. Any comment links are also modified appropriately.
+
+If you're using the [variants property](#the-variants-property) in `definition-manifest.json`, you can set up the custom stub so that you can specify the variant from `devcontainer.json` by adding an argument called `VARIANT` right before the `FROM` statement that uses it.
+
+In your `Dockerfile`:
+
+```Dockerfile
+ARG VARIANT=3
+FROM mcr.microsoft.com/vscode/devcontainers/python:${VARIANT}
+```
+
+In `devcontainer.json`:
+
+```json
+"build": {
+    "args": {
+        "VARIANT": "3.8"
+    }
+}
+```
+
+## definition-manifest.json
 
 Let's run through the `definition-manifest.json` file.
 
@@ -52,24 +131,16 @@ The **`rootDistro`** property can be `debian`, `alpine`, or `redhat` currently. 
 The **`latest`** and **`tags`** properties affect how tags are applied. For example, here is how several dev container folders map:
 
 ```text
-debian-9-git => mcr.microsoft.com/vscode/devcontainers/base:debian-9
-alpine-3.10-git => mcr.microsoft.com/vscode/devcontainers/base:alpine-3.10
-ubnutu-18.04-git => mcr.microsoft.com/vscode/devcontainers/base:ubuntu-18.04
-javascript-node-12 => mcr.microsoft.com/vscode/devcontainers/javascript-node:12
-    typescript-node-10 => mcr.microsoft.com/vscode/devcontainers/typescript-node:12
-javascript-node-10 => mcr.microsoft.com/vscode/devcontainers/javascript-node:10
-    typescript-node-10 => mcr.microsoft.com/vscode/devcontainers/typescript-node:10
+debian => mcr.microsoft.com/vscode/devcontainers/base:debian
+alpine => mcr.microsoft.com/vscode/devcontainers/base:alpine
+ubnutu => mcr.microsoft.com/vscode/devcontainers/base:ubuntu
 ```
 
-This results in just three "repositories" in the registry much like you would see for other images in Docker Hub.
+This results in just one "repository" in the registry much like you would see for other images in Docker Hub.
 
 - mcr.microsoft.com/vscode/devcontainers/base
-- mcr.microsoft.com/vscode/devcontainers/javascript-node
-- mcr.microsoft.com/vscode/devcontainers/typescript-node
 
 The package version is then automatically added to these various tags in the `${VERSION}` location for an item in the `tags` property array as a part of the release. For example, release 0.40.0 would result in:
-
-mcr.microsoft.com/vscode/devcontainers/base
 
 - 0.40.0-debian-9
 - 0.40-debian-9
@@ -86,11 +157,11 @@ In this case, Debian is also the one that is used for `latest` for the `base` re
 
 There's a special "dev" version that can be used to build master on CI - I ended up needing this to test and others would if they base an image off of one of the MCR images.  e.g. `dev-debian-9`.
 
-Finally, there is a **`parent`** property that can be used to specify if the container depends an image created as a part of another container build. For example, `typescript-node-10` uses the image from `javascript-node-10` and therefore includes the following:
+Finally, there is a **`parent`** property that can be used to specify if the container depends an image created as a part of another container build. For example, `typescript-node` uses the image from `javascript-node` and therefore includes the following:
 
 ```json
 "build" {
-    "parent": "javascript-node-10"
+    "parent": "javascript-node"
 }
 ```
 
@@ -140,38 +211,6 @@ This configuration would cause separate image variants, each with a different `V
 
 In addition `mcr.microsoft.com/vscode/devcontainers/python` would point to `mcr.microsoft.com/vscode/devcontainers/python:3` since it is the first in the list.
 
-### Creating an alternate "stub" Dockerfile
-
-By default, the **Remote-Containers: Add Development Container Configuration File...** and related properties will use a basic getting started stub / sample Dockerfile [from here](./assets) and with a reference to the appropriate image. This provides some basic getting started information for developers.
-
-However, in some cases you may want to include some special instructions for developers. In this case, you can add a custom stub Dockerfile by creating the following files:
-
-- `base.Dockerfile`: Dockerfile used to generate the image itself
-- `Dockerfile`: A stub Dockerfile
-
-You can then reference `base.Dockerfile` in `devcontainer.json` to make editing the file that is used to create the image easy.
-
-When the definitions are packaged up for use, `base.Dockerfile` is excluded and the `devcontainer.json` file is automatically updated to `Dockerfile`. Any comment links are also modified appropriately.
-
-If you're using the [variants property](#the-variants-property), you can set up the custom stub so that you can specify the variant from `devcontainer.json` by adding an argument called `VARIANT` right before the `FROM` statement that uses it.
-
-In your `Dockerfile`:
-
-```
-ARG VARIANT=3
-FROM mcr.microsoft.com/vscode/devcontainers/python:${VARIANT}
-```
-
-In `devcontainer.json`:
-
-```
-"build": {
-    "args": {
-        "VARIANT": "3.8"
-    }
-}
-```
-
 ### The dependencies property
 
 The dependencies property is used for dependency and version tracking. Consider the Debian 9 [definition-manifest.json](../containers/debian-9-git/definition-manifest.json) file.
@@ -212,44 +251,6 @@ Following this is a list of libraries installed in the image by its Dockerfile. 
 - `manual` - Useful for other types of registrations that do not have a specific type, like `git` in the example above.
 
 For everything but `manual`, the image that is generated is started so the package versions can be queried automatically.
-
-## Testing the build
-
-Once you have your build configuration setup, you can use the `vscdc` CLI to test that everything is configured as you would expect.
-
-1. First, build the image(s) using the CLI as follows:
-
-   ```bash
-   build/vscdc push --no-push --registry mcr.microsoft.com --registry-path vscode/devcontainers --release master <you-definition-id-here>
-   ```
-
-2. Use the Docker CLI to verify all of the expected images and tags and have the right contents:
-
-    ```bash
-    docker run -it --rm mcr.microsoft.com/vscode/devcontainers/<expected-repository>:dev-<expected tag> bash
-    ```
-
-3. Finally, test cgmanifest generation by running:
-
-   ```bash
-   build/vscdc cg --registry mcr.microsoft.com --registry-path vscode/devcontainers --release master <you-definition-id-here>
-   ```
-
-Once you're happy with the result, you can also verify that the `devcontainer.json` and the associated concent that will be generated for your definition is correct.
-
-1. Generate a `.tgz` with all of the definitions zipped inside of it.
-
-    ```bash
-    build/vscdc pack --prep-and-package-only --release master
-    ```
-
-    A new file called `vscode-dev-containers-<version>-dev.tgz` should be in the root of the repository once this is done.
-
-2. Unzip generated the `tgz` somewhere in your filesystem.
-
-3. Start VS Code and use  **Remote-Containers: Open Folder in Container...**  on the unzipped definition in the `package/containers` folder and verify everything starts correctly.
-
-That's it!
 
 ---
 

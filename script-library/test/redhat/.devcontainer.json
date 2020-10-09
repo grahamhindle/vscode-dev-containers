@@ -1,5 +1,5 @@
 {
-	"name": "Script Tester",
+	"name": "Script Tester - RedHat",
 	"build": {
 		"dockerfile": "../Dockerfile",
 		"context": "../../",
@@ -10,9 +10,18 @@
 		}
 	},
 
+	"mounts": [ "source=/var/run/docker.sock,target=/var/run/docker-host.sock,type=bind" ],
+	"workspaceMount": "source=${localWorkspaceFolder}/../..,target=/workspace,type=bind",
+	"workspaceFolder": "/workspace",
+	"overrideCommand": false,
+
 	"settings": { 
 		"terminal.integrated.shell.linux": null
 	},
+
+	"extensions": [
+		"ms-azuretools.vscode-docker"
+	],
 
 	"remoteUser": "vscode"
 }
